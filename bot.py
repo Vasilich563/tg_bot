@@ -50,10 +50,10 @@ def machmala_handler(message):
             bot.send_photo(message.chat.id, photo, reply_markup=remove)
     except Exception:
         bot.send_message(message.chat.id, "мачмала", reply_markup=remove)
-    if message.from_user.username == "St_Kek_OParis" or message.from_user.username == "w0rmixChep":
-        with open("stas.png", 'rb') as fin:
-            photo = fin.read()
-            bot.send_photo(message.chat.id, photo)
+    #if message.from_user.username == "St_Kek_OParis" or message.from_user.username == "w0rmixChep":
+    with open("stas.png", 'rb') as fin:
+        photo = fin.read()
+        bot.send_photo(message.chat.id, photo)
     send_question(message)
 
 
