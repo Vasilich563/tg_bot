@@ -47,7 +47,7 @@ def log_message(message):
 def save_message_json_only(message):
     uuid_ = uuid4().hex
     now = datetime.datetime.now()
-    dir_path = f"./logs/text_from_{message.from_user.username}_{now.date()}_{now.hour}_{now.minute}_{now.second}_{now.microsecond}_message_uuid_{uuid_}"
+    dir_path = f"./logs/json_only_from_{message.from_user.username}_{now.date()}_{now.hour}_{now.minute}_{now.second}_{now.microsecond}_message_uuid_{uuid_}"
 
     try:
         os.mkdir(dir_path)
