@@ -34,6 +34,7 @@ def handle_search_query(message, cancel_markup_message_id):
         bot.edit_message_reply_markup(message.chat.id, cancel_markup_message_id)
         # TODO log search query
         print(f"Search query: {message.text}")
+        bot.send_message(message.chat.id, f"был введен запрос:{message.text}")
         send_question(message)
     else:
         # TODO log message
@@ -71,6 +72,7 @@ def handle_question_query(message, cancel_markup_message_id):
         bot.edit_message_reply_markup(message.chat.id, cancel_markup_message_id)
         # TODO log search query
         print(f"Question query: {message.text}")
+        bot.send_message(message.chat.id, f"был задан вопрос:{message.text}")
         send_question(message)
     else:
         # TODO log message
