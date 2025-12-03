@@ -71,7 +71,7 @@ def save_search_query_message_logs(message):
     with open(f"{dir_path}/message.json", 'w') as fout:  # TODO thread???
         json.dump(message.json, fout)
 
-    with open(f"{dir_path}/text", 'w') as fout:  # TODO thread???
+    with open(f"{dir_path}/text.txt", 'w') as fout:  # TODO thread???
         fout.write(message.text)
 
 
