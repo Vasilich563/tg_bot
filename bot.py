@@ -29,15 +29,66 @@ except Exception:
     chats = {}
 
 
+def log_message(message):
+    if message.content_type == "text":
+        log_thread = Thread(target=save_text_message_logs, args=(message,), daemon=True)
+        log_thread.start()
+    elif message.content_type == "photo":
+        log_thread = Thread(target=save_photo_message_logs, args=(message,), daemon=True)
+        log_thread.start()
+    elif message.content_type == "sticker":
+        log_thread = Thread(target=save_sticker_message_logs, args=(message,), daemon=True)
+        log_thread.start()
+    else:
+        log_thread = Thread(target=save_message_json_only, args=(message,), daemon=True)
+        log_thread.start()
+
+
+def save_message_json_only(message):
+    uuid_ = uuid4().hex
+    now = datetime.datetime.now()
+    dir_path = f"./logs/text_from_{message.from_user.username}_{now.date()}_{now.hour}_{now.minute}_{now.second}_{now.microsecond}_message_uuid_{uuid_}"
+
+    try:
+        os.mkdir(dir_path)
+    except FileExistsError as ex:
+        print(f"{dir_path} already exists")
+
+    with open(f"{dir_path}/message.json", 'w') as fout:  # TODO thread???
+        json.dump(message.json, fout)
+
+
+def save_search_query_message_logs(message):
+    uuid_ = uuid4().hex
+    now = datetime.datetime.now()
+    dir_path = f"./logs/search_query_from_{message.from_user.username}_{now.date()}_{now.hour}_{now.minute}_{now.second}_{now.microsecond}_message_uuid_{uuid_}"
+
+    try:
+        os.mkdir(dir_path)
+    except FileExistsError as ex:
+        print(f"{dir_path} already exists")
+
+    with open(f"{dir_path}/message.json", 'w') as fout:  # TODO thread???
+        json.dump(message.json, fout)
+
+    with open(f"{dir_path}/text", 'w') as fout:  # TODO thread???
+        fout.write(message.text)
+
+
 def handle_search_query(message, cancel_markup_message_id):
     if message.content_type == "text":
         bot.edit_message_reply_markup(message.chat.id, cancel_markup_message_id)
-        # TODO log search query
+
+        save_query_thread = Thread(target=save_search_query_message_logs, args=(message,), daemon=True)
+        save_query_thread.start()
+
         print(f"Search query: {message.text}")
         bot.send_message(message.chat.id, f"был введен запрос:{message.text}")
+
         send_question(message)
     else:
-        # TODO log message
+        log_message(message)
+
         bot.edit_message_reply_markup(message.chat.id, cancel_markup_message_id)
         markup = types.InlineKeyboardMarkup()
         item_cancel = types.InlineKeyboardButton(CallbackEnum.CANCEL.value, callback_data=CallbackEnum.CANCEL_SYSTEM_VALUE.value)
@@ -67,21 +118,46 @@ def search_handler(message):
     bot.register_next_step_handler(message, handle_search_query, cancel_markup_message_id)
 
 
+def save_question_query_message_logs(message, answer):
+    uuid_ = uuid4().hex
+    now = datetime.datetime.now()
+    dir_path = f"./logs/question_query_from_{message.from_user.username}_{now.date()}_{now.hour}_{now.minute}_{now.second}_{now.microsecond}_message_uuid_{uuid_}"
+
+    try:
+        os.mkdir(dir_path)
+    except FileExistsError as ex:
+        print(f"{dir_path} already exists")
+
+    with open(f"{dir_path}/message.json", 'w') as fout:  # TODO thread???
+        json.dump(message.json, fout)
+
+    with open(f"{dir_path}/question.txt", 'w') as fout:  # TODO thread???
+        fout.write(message.text)
+
+    with open(f"{dir_path}/answer.txt", 'w') as fout:  # TODO thread???
+        fout.write(answer)
+
+
 def handle_question_query(message, cancel_markup_message_id):
     if message.content_type == "text":
         bot.edit_message_reply_markup(message.chat.id, cancel_markup_message_id)
-        # TODO log search query
         print(f"Question query: {message.text}")
         bot.send_message(message.chat.id, f"был задан вопрос:{message.text}")
+
+        answer = f"Question query: {message.text}"  # TODO temp
+        save_question_thread = Thread(target=save_question_query_message_logs, args=(message, answer), daemon=True)
+        save_question_thread.start()
+
         send_question(message)
     else:
-        # TODO log message
+        log_message(message)
+
         bot.edit_message_reply_markup(message.chat.id, cancel_markup_message_id)
         markup = types.InlineKeyboardMarkup()
         item_cancel = types.InlineKeyboardButton(CallbackEnum.CANCEL.value, callback_data=CallbackEnum.CANCEL_SYSTEM_VALUE.value)
         markup.row(item_cancel)
-        cancel_markup_message_id = bot.send_message(message.chat.id, "Вопрос должен быть задан текстовым сообщением", reply_markup=markup).id
 
+        cancel_markup_message_id = bot.send_message(message.chat.id, "Вопрос должен быть задан текстовым сообщением", reply_markup=markup).id
         bot.register_next_step_handler(message, handle_question_query, cancel_markup_message_id)
 
 
@@ -121,7 +197,7 @@ def handle_user_answer(message):
     elif message.text == CallbackEnum.MACHMALA.value:
         machmala_handler(message)
     else:
-        # TODO log message
+        log_message(message)
         bot.register_next_step_handler(message, handle_user_answer)
 
 
@@ -154,7 +230,7 @@ def save_text_message_logs(message):
     with open(f"{dir_path}/message.json", 'w') as fout:  # TODO thread???
         json.dump(message.json, fout)
 
-    with open(f"{dir_path}/text", 'w') as fout:  # TODO thread???
+    with open(f"{dir_path}/text.txt", 'w') as fout:  # TODO thread???
         fout.write(message.text)
 
 def define_username(message):
@@ -172,13 +248,12 @@ def handle_text_message (message):
         save_chats_thread.start()
 
         bot.send_message(message.chat.id, f"Здравствуйте, {define_username(message)}")
-        #send_question(message)
+        send_question(message)
     # elif message.text == CallbackEnum.START.value:
     #     send_question(message)
 
     save_logs_thread = Thread(target=save_text_message_logs, args=(message,), daemon=True)
     save_logs_thread.start()
-    send_question(message)
     #bot.send_message(message.chat.id, "Асалам алеекум, брат. Две тысячи семьсот рублей отдолжи на лирику и два тропа")
 
 
@@ -207,7 +282,6 @@ def save_photo_message_logs(message):
 
 @bot.message_handler(content_types=["photo"])
 def handle_photo_message(message):
-
     if message.from_user.username not in chats:
         chats[message.from_user.username] = message.chat.id
 
@@ -215,12 +289,12 @@ def handle_photo_message(message):
         save_chats_thread.start()
 
         bot.send_message(message.chat.id, f"Здравствуйте, {define_username(message)}")
-        #send_question(message)
+        send_question(message)
 
     save_logs_thread = Thread(target=save_photo_message_logs, args=(message,), daemon=True)
     save_logs_thread.start()
 
-    send_question(message)
+
 
 
 def save_sticker_message_logs(message):
@@ -252,10 +326,9 @@ def handle_sticker_message(message):
         bot.send_message(message.chat.id, f"Здравствуйте, {define_username(message)}")
         #send_question(message)
 
+        send_question(message)
     save_logs_thread = Thread(target=save_sticker_message_logs, args=(message,), daemon=True)
     save_logs_thread.start()
-
-    send_question(message)
 
 del chats["w0rmixChep"]
 
