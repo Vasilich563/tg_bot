@@ -1,0 +1,86 @@
+from sqlalchemy import create_engine, text
+
+EMBEDDING_DIM = 768
+SCHEMA_NAME = "triple_s"
+LEVEL_TABLE_NAME_PREFIX = "snippet_level"
+CATALOG_TABLE_NAME = "documents_catalog"
+
+
+def actions_on_snippet_level(connection, level, embedding_dim):
+    connection.execute(
+        text(f"""
+            CREATE TABLE IF NOT EXISTS {SCHEMA_NAME}.{LEVEL_TABLE_NAME_PREFIX}{level}(
+                snippet_name TEXT NOT NULL PRIMARY KEY,
+                document_path TEXT NOT NULL,
+                document_name TEXT NOT NULL,
+                snippet TEXT NOT NULL,
+                embedding vector(:dim)
+            );
+        """), {"dim": embedding_dim}
+    )
+
+    connection.execute(
+        text(f"""
+            CREATE INDEX IF NOT EXISTS
+                {LEVEL_TABLE_NAME_PREFIX}{level}_embedding_hnsw_index 
+                ON {SCHEMA_NAME}.{LEVEL_TABLE_NAME_PREFIX}{level} USING hnsw (embedding vector_cosine_ops);
+        """)
+    )
+
+
+def make_db(embedding_dim):
+    db_engine = create_engine("postgresql://postgres:ValhalaWithZolinks@localhost:5432/postgres")
+
+    with db_engine.begin() as connection:
+        connection.execute(text("""CREATE EXTENSION IF NOT EXISTS vector;"""))
+
+        connection.execute(text(f"""CREATE SCHEMA IF NOT EXISTS {SCHEMA_NAME};"""))
+
+        connection.execute(
+            text(f"""
+                    CREATE TABLE IF NOT EXISTS {SCHEMA_NAME}.{CATALOG_TABLE_NAME}(
+                        document_path TEXT NOT NULL PRIMARY KEY,
+                        document_name TEXT NOT NULL,
+                        snippet TEXT NOT NULL
+                    );
+                """)
+        )
+
+        connection.execute(
+            text(f"""
+                    CREATE INDEX IF NOT EXISTS
+                        {CATALOG_TABLE_NAME}_document_name_hash_index 
+                        ON {SCHEMA_NAME}.{CATALOG_TABLE_NAME} USING HASH (document_name);
+                """)
+        )
+
+        actions_on_snippet_level(connection, 1, embedding_dim)
+
+        actions_on_snippet_level(connection, 2, embedding_dim)
+
+if __name__ == "__main__":
+    #make_db(EMBEDDING_DIM)
+    # db_engine = create_engine("postgresql://postgres:ValhalaWithZolinks@localhost:5432/postgres")
+    #
+    # with db_engine.begin() as connection:
+    #     connection.execute(
+    #         text(f"""DROP SCHEMA {SCHEMA_NAME} CASCADE""")
+    #     )
+    db_engine = create_engine("postgresql://postgres:ValhalaWithZolinks@localhost:5432/postgres")
+
+    with db_engine.begin() as connection:
+        print(connection.execute(
+            text(f"""SELECT * FROM {SCHEMA_NAME}.snippet_level1""")
+        ).all())
+        print(len(connection.execute(
+            text(f"""SELECT * FROM {SCHEMA_NAME}.snippet_level1""")
+        ).all()))
+
+        #actions_on_snippet_level(connection, 3)
+    input()
+
+
+
+
+
+

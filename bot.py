@@ -1,11 +1,58 @@
 from threading import Thread, Lock
 from uuid import uuid4
+import urllib.parse as parse
 import telebot
 import datetime
 import json
 import os
 from telebot import types
 from enum import Enum
+import torch
+from transformers import DeepseekV2ForCausalLM, AutoTokenizer, GenerationConfig, RobertaTokenizerFast, RobertaModel
+from embedding_system.make_db import make_db
+from sqlalchemy import create_engine
+from embedding_system.embedding_system import EmbeddingSystem
+from embedding_system.db_crud import DBCrud
+from crawler import observe_directory_daemon
+
+
+print("Up question model")
+llm_name = "deepseek-ai/DeepSeek-V2-Lite"
+question_device = torch.device("cuda:0")
+
+question_model = DeepseekV2ForCausalLM.from_pretrained(llm_name, dtype=torch.bfloat16)
+question_model.generation_config = GenerationConfig.from_pretrained(llm_name)
+question_model.generation_config.pad_token_id = question_model.generation_config.eos_token_id
+question_model = question_model.to(question_device)
+question_model.eval()
+
+question_tokenizer = AutoTokenizer.from_pretrained(llm_name)
+
+print("Up search model")
+search_tokenizer = RobertaTokenizerFast.from_pretrained("FacebookAI/roberta-large")
+vocab_size = len(search_tokenizer.get_vocab())
+
+d_model = 1024
+search_limit = 10
+
+padding_index = search_tokenizer.pad_token_type_id
+search_device = torch.device("cuda:0")
+search_dtype = torch.float16
+
+
+search_model = RobertaModel.from_pretrained("FacebookAI/roberta-large", dtype=search_dtype).to(search_device)
+
+make_db(d_model)
+
+print("Up db")
+db_engine = create_engine("postgresql://postgres:ValhalaWithZolinks@localhost:5432/postgres")
+db_crud = DBCrud(db_engine)
+EmbeddingSystem.class_init(search_tokenizer, search_model, db_crud)
+
+print("Up crawler")
+directory_to_check = "C:/Users/amis-/PycharmProjects/bot/files"
+observe_directory_daemon(directory_to_check)
+
 
 class CallbackEnum(Enum):
     START = "/start"
@@ -75,6 +122,24 @@ def save_search_query_message_logs(message):
         fout.write(message.text)
 
 
+def process_db_select_results(query_results):
+
+    results_to_show = []
+    for i, query_result_row in enumerate(query_results):
+        results_to_show.append(
+            f"- {i}) ###{query_result_row.document_name}###\n{query_result_row.snippet}"
+        )
+    return results_to_show
+
+
+def search(message):
+    result_list = process_db_select_results(
+        EmbeddingSystem.handle_user_query(d_model, message.text, search_limit)
+    )
+    bot.send_message(message.chat.id, "\n".join(result_list))
+
+
+
 def handle_search_query(message, cancel_markup_message_id):
     if message.content_type == "text":
         bot.edit_message_reply_markup(message.chat.id, cancel_markup_message_id)
@@ -82,8 +147,10 @@ def handle_search_query(message, cancel_markup_message_id):
         save_query_thread = Thread(target=save_search_query_message_logs, args=(message,), daemon=True)
         save_query_thread.start()
 
-        print(f"Search query: {message.text}")
-        bot.send_message(message.chat.id, f"был введен запрос:{message.text}")
+        bot.send_message(message.chat.id, f"Обрабатываю Ваш запрос...")
+
+        search(message)
+
 
         send_question(message)
     else:
@@ -137,14 +204,23 @@ def save_question_query_message_logs(message, answer):
     with open(f"{dir_path}/answer.txt", 'w') as fout:  # TODO thread???
         fout.write(answer)
 
+def answer_user_question(text):
+    with torch.no_grad():
+        input_tensor = search_tokenizer(text, return_tensors="pt").input_ids.to(question_device)
+
+        output_gen = question_model.generate(input_tensor, max_new_tokens=128)
+
+        answer = search_tokenizer.decode(output_gen[0][input_tensor.shape[1]:], skip_special_tokens=True)
+    return answer
+
 
 def handle_question_query(message, cancel_markup_message_id):
     if message.content_type == "text":
         bot.edit_message_reply_markup(message.chat.id, cancel_markup_message_id)
-        print(f"Question query: {message.text}")
-        bot.send_message(message.chat.id, f"был задан вопрос:{message.text}")
+        bot.send_message(message.chat.id, "Я думаю над вашим вопросом, это может занять некоторое время...")
+        answer = answer_user_question(message.text)
+        bot.send_message(message.chat.id, answer)
 
-        answer = f"Question query: {message.text}"  # TODO temp
         save_question_thread = Thread(target=save_question_query_message_logs, args=(message, answer), daemon=True)
         save_question_thread.start()
 
@@ -330,8 +406,12 @@ def handle_sticker_message(message):
     save_logs_thread = Thread(target=save_sticker_message_logs, args=(message,), daemon=True)
     save_logs_thread.start()
 
-del chats["w0rmixChep"]
+try:
+    del chats["w0rmixChep"]
+except Exception:
+    pass
 
+print("Polling bot")
 bot.polling(none_stop=True, interval=0)
 
 
